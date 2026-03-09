@@ -8,6 +8,9 @@ const clearPointsBtn = document.getElementById("clearPoints");
 const calibrationStatus = document.getElementById("calibrationStatus");
 const measureStatus = document.getElementById("measureStatus");
 const modeBadge = document.getElementById("modeBadge");
+const zoomControls = document.getElementById("zoomControls");
+const zoomOutBtn = document.getElementById("zoomOutBtn");
+const zoomInBtn = document.getElementById("zoomInBtn");
 const hintBar = document.getElementById("hintBar");
 const resultsList = document.getElementById("resultsList");
 
@@ -22,9 +25,14 @@ const state = {
   measurePoints: [],
   pointerCanvas: null,
   scaleRealPerPixel: null,
-  unit: "mm",
+  unit: "cm",
   sequence: 0,
+  zoom: 1,
 };
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 0.2;
 
 function setMode(mode) {
   state.mode = mode;
@@ -43,6 +51,11 @@ function setupCanvasSize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
+function updateImageDependentUi() {
+  const hasImage = Boolean(state.image);
+  zoomControls.hidden = !hasImage;
+}
+
 function updateImageRect() {
   if (!state.image) {
     state.imageRect = null;
@@ -55,8 +68,8 @@ function updateImageRect() {
   const ih = state.image.height;
 
   const scale = Math.min(cw / iw, ch / ih);
-  const drawW = iw * scale;
-  const drawH = ih * scale;
+  const drawW = iw * scale * state.zoom;
+  const drawH = ih * scale * state.zoom;
   const x = (cw - drawW) / 2;
   const y = (ch - drawH) / 2;
   state.imageRect = { x, y, w: drawW, h: drawH };
@@ -91,6 +104,11 @@ function distance(a, b) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.hypot(dx, dy);
+}
+
+function hasValidKnownLength() {
+  const knownLength = Number(knownLengthInput.value);
+  return Number.isFinite(knownLength) && knownLength > 0;
 }
 
 function formatRealDistance(px) {
@@ -137,6 +155,23 @@ function drawLabel(mid, text, color = "#ffffff") {
   ctx.fillText(text, boxX + padX, boxY + 14);
 }
 
+function drawBlockingOverlay(text) {
+  if (!state.imageRect) {
+    return;
+  }
+
+  const { x, y, w, h } = state.imageRect;
+  ctx.fillStyle = "rgba(8, 11, 20, 0.48)";
+  ctx.fillRect(x, y, w, h);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 18px 'Space Grotesk', sans-serif";
+  const textWidth = ctx.measureText(text).width;
+  const centerX = x + w / 2 - textWidth / 2;
+  const centerY = y + h / 2;
+  ctx.fillText(text, centerX, centerY);
+}
+
 function redraw() {
   setupCanvasSize();
 
@@ -149,6 +184,11 @@ function redraw() {
   updateImageRect();
   const { x, y, w, h } = state.imageRect;
   ctx.drawImage(state.image, x, y, w, h);
+
+  const pointerPoint = state.pointerCanvas
+    ? canvasPointToImagePoint(state.pointerCanvas.x, state.pointerCanvas.y)
+    : null;
+  const isHoveringImage = Boolean(pointerPoint);
 
   if (state.calibrationPoints.length > 0) {
     drawPoint(state.calibrationPoints[0], "#ff7f4a");
@@ -179,18 +219,19 @@ function redraw() {
     }
   }
 
-  if (state.mode === "measure" && state.pointerCanvas && state.measurePoints.length > 0) {
+  if (state.mode === "measure" && pointerPoint && state.measurePoints.length > 0) {
     const lastPoint = state.measurePoints[state.measurePoints.length - 1];
-    const pointerPoint = canvasPointToImagePoint(state.pointerCanvas.x, state.pointerCanvas.y);
-    if (pointerPoint) {
-      drawLine(lastPoint, pointerPoint, "rgba(70, 197, 220, 0.75)");
-      drawPoint(pointerPoint, "rgba(34, 216, 255, 0.6)");
-      drawLabel(
-        { x: (lastPoint.x + pointerPoint.x) / 2, y: (lastPoint.y + pointerPoint.y) / 2 },
-        formatRealDistance(distance(lastPoint, pointerPoint)),
-        "#d8f8ff"
-      );
-    }
+    drawLine(lastPoint, pointerPoint, "rgba(70, 197, 220, 0.75)");
+    drawPoint(pointerPoint, "rgba(34, 216, 255, 0.6)");
+    drawLabel(
+      { x: (lastPoint.x + pointerPoint.x) / 2, y: (lastPoint.y + pointerPoint.y) / 2 },
+      formatRealDistance(distance(lastPoint, pointerPoint)),
+      "#d8f8ff"
+    );
+  }
+
+  if (isHoveringImage && !hasValidKnownLength() && !state.scaleRealPerPixel && state.mode !== "measure") {
+    drawBlockingOverlay("Set a known length before calibrating");
   }
 }
 
@@ -280,9 +321,18 @@ function clearPoints() {
   redraw();
 }
 
-imageInput.addEventListener("change", (evt) => {
-  const file = evt.target.files?.[0];
-  if (!file) {
+function applyZoom(delta) {
+  if (!state.image) {
+    return;
+  }
+  const nextZoom = Number((state.zoom + delta).toFixed(2));
+  state.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
+  redraw();
+}
+
+function loadImageFromFile(file, sourceLabel = "Uploaded") {
+  if (!file || !file.type.startsWith("image/")) {
+    imageInfo.textContent = "That clipboard item is not an image.";
     return;
   }
 
@@ -295,8 +345,12 @@ imageInput.addEventListener("change", (evt) => {
     state.measurePoints = [];
     state.pointerCanvas = null;
     state.scaleRealPerPixel = null;
+    state.zoom = 1;
     setMode("idle");
-    imageInfo.textContent = `${file.name} (${image.width} x ${image.height})`;
+    updateImageDependentUi();
+
+    const fileName = file.name || "clipboard-image";
+    imageInfo.textContent = `${sourceLabel}: ${fileName} (${image.width} x ${image.height})`;
     calibrationStatus.textContent = "Set known length and pick 2 calibration points.";
     measureStatus.textContent = "Calibration required before measuring.";
     startMeasureBtn.disabled = true;
@@ -306,12 +360,47 @@ imageInput.addEventListener("change", (evt) => {
     URL.revokeObjectURL(objectUrl);
   };
 
+  image.onerror = () => {
+    imageInfo.textContent = "Could not read image from clipboard.";
+    URL.revokeObjectURL(objectUrl);
+  };
+
   image.src = objectUrl;
+}
+
+imageInput.addEventListener("change", (evt) => {
+  const file = evt.target.files?.[0];
+  if (!file) {
+    return;
+  }
+  loadImageFromFile(file, "Uploaded");
+});
+
+document.addEventListener("paste", (evt) => {
+  const items = evt.clipboardData?.items;
+  if (!items?.length) {
+    return;
+  }
+
+  const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
+  if (!imageItem) {
+    return;
+  }
+
+  const file = imageItem.getAsFile();
+  if (!file) {
+    return;
+  }
+
+  evt.preventDefault();
+  loadImageFromFile(file, "Pasted");
 });
 
 startCalibrationBtn.addEventListener("click", beginCalibration);
 startMeasureBtn.addEventListener("click", startMeasuring);
 clearPointsBtn.addEventListener("click", clearPoints);
+zoomOutBtn.addEventListener("click", () => applyZoom(-ZOOM_STEP));
+zoomInBtn.addEventListener("click", () => applyZoom(ZOOM_STEP));
 
 canvas.addEventListener("pointerdown", (evt) => {
   canvas.setPointerCapture(evt.pointerId);
@@ -353,7 +442,7 @@ canvas.addEventListener("pointerdown", (evt) => {
 
 canvas.addEventListener("pointermove", (evt) => {
   state.pointerCanvas = getCanvasCoordinates(evt);
-  if (state.mode === "measure") {
+  if (state.image) {
     redraw();
   }
 });
@@ -363,5 +452,12 @@ canvas.addEventListener("pointerleave", () => {
   redraw();
 });
 
+knownLengthInput.addEventListener("input", () => {
+  if (state.image) {
+    redraw();
+  }
+});
+
 window.addEventListener("resize", redraw);
+updateImageDependentUi();
 redraw();

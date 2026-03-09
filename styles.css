@@ -1,10 +1,11 @@
 :root {
-  --bg: #f2f6f5;
-  --ink: #142422;
+  --bg: #f5f2ff;
+  --ink: #1f1738;
   --panel: #ffffff;
-  --line: #d5e3df;
-  --accent: #0c8b72;
-  --accent-soft: #d7f2eb;
+  --line: #ddd2f3;
+  --accent: #ba91ff;
+  --accent-hover: #cbabff;
+  --accent-soft: #efe6ff;
   --warn: #e66a2c;
 }
 
@@ -19,8 +20,8 @@ body {
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at 20% 10%, #e2f3ef 0%, transparent 35%),
-    radial-gradient(circle at 80% 5%, #fde8db 0%, transparent 30%),
+    radial-gradient(circle at 20% 10%, #ece1ff 0%, transparent 35%),
+    radial-gradient(circle at 80% 5%, #dbe4ff 0%, transparent 30%),
     var(--bg);
 }
 
@@ -39,7 +40,7 @@ body {
 }
 
 .brand {
-  background: linear-gradient(130deg, #0c8b72, #0f6f8e);
+  background: linear-gradient(130deg, #7d4dff, #102a72);
   color: #fff;
   border-radius: 16px;
   padding: 16px;
@@ -80,7 +81,8 @@ label {
 }
 
 input[type="number"],
-input[type="text"] {
+input[type="text"],
+select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -96,7 +98,7 @@ input[type="file"] {
 .file-input-wrap {
   display: inline-flex;
   cursor: pointer;
-  border: 1px dashed #7da79d;
+  border: 1px dashed #9d86cf;
   background: var(--accent-soft);
   border-radius: 12px;
   padding: 10px 12px;
@@ -124,14 +126,18 @@ input[type="file"] {
 }
 
 .btn.primary {
-  border-color: #0e7f69;
+  border-color: #9f73ef;
   background: var(--accent);
   color: #fff;
 }
 
+.btn.primary:hover:enabled {
+  background: var(--accent-hover);
+}
+
 .btn.ghost {
-  border-color: #ccdbd7;
-  background: #f8fbfa;
+  border-color: #d7c7f5;
+  background: #fbf8ff;
 }
 
 .button-row {
@@ -142,7 +148,7 @@ input[type="file"] {
 
 .muted {
   margin-top: 8px;
-  color: #49635d;
+  color: #5f5287;
   font-size: 0.85rem;
 }
 
@@ -162,9 +168,9 @@ input[type="file"] {
 
 .canvas-panel {
   position: relative;
-  background: #0e1e1b;
+  background: #111a3d;
   border-radius: 18px;
-  border: 1px solid #29423d;
+  border: 1px solid #283a86;
   overflow: hidden;
   min-height: calc(100vh - 28px);
 }
@@ -177,17 +183,54 @@ input[type="file"] {
 }
 
 .mode-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 2;
   padding: 7px 10px;
   border-radius: 999px;
   font-size: 0.78rem;
   font-family: "IBM Plex Mono", Consolas, monospace;
-  color: #0f2b25;
-  background: #d3eee7;
-  border: 1px solid #98c5b8;
+  color: #2d1b57;
+  background: #ecdcff;
+  border: 1px solid #c6a8f2;
+}
+
+.top-overlay-controls {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid #c6a8f2;
+  background: rgba(236, 220, 255, 0.96);
+}
+
+.zoom-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #b796ea;
+  border-radius: 999px;
+  background: #fff;
+  color: #2d1b57;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.zoom-btn:hover {
+  background: #f6efff;
+}
+
+.zoom-btn:active {
+  transform: translateY(1px);
 }
 
 .hint-bar {
@@ -197,7 +240,7 @@ input[type="file"] {
   right: 12px;
   z-index: 2;
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #b8d2cb;
+  border: 1px solid #cdb9ef;
   border-radius: 12px;
   padding: 10px;
   font-size: 0.87rem;
@@ -221,8 +264,8 @@ input[type="file"] {
 
   .control-panel {
     order: 2;
-    background: #f7faf9;
-    border-top: 1px solid #cedbd7;
+    background: #f9f5ff;
+    border-top: 1px solid #d6c8f1;
     padding: 12px;
     display: grid;
     gap: 10px;
@@ -246,6 +289,27 @@ input[type="file"] {
 
   #resultsList {
     max-height: 120px;
+  }
+
+  .top-overlay-controls {
+    top: 10px;
+    left: 10px;
+    gap: 6px;
+  }
+
+  .mode-badge {
+    padding: 6px 9px;
+    font-size: 0.74rem;
+  }
+
+  .zoom-controls {
+    gap: 4px;
+    padding: 3px;
+  }
+
+  .zoom-btn {
+    width: 28px;
+    height: 28px;
   }
 }
 

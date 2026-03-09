@@ -25,6 +25,7 @@
           <label class="file-input-wrap" for="imageInput">
             <span>Choose image</span>
           </label>
+          <div class="muted">Or paste an image with Ctrl+V.</div>
           <input id="imageInput" type="file" accept="image/*" />
           <div id="imageInfo" class="muted">No image loaded</div>
         </section>
@@ -37,7 +38,13 @@
           </div>
           <div class="row">
             <label for="knownUnit">Unit</label>
-            <input id="knownUnit" type="text" maxlength="12" placeholder="mm, cm, in" value="mm" />
+            <select id="knownUnit">
+              <option value="mm">mm</option>
+              <option value="cm" selected>cm</option>
+              <option value="m">m</option>
+              <option value="in">in</option>
+              <option value="ft">ft</option>
+            </select>
           </div>
           <button id="startCalibration" class="btn primary">Pick 2 calibration points</button>
           <div id="calibrationStatus" class="muted">Scale is not calibrated yet.</div>
@@ -59,7 +66,13 @@
       </aside>
 
       <main class="canvas-panel">
-        <div id="modeBadge" class="mode-badge">Idle</div>
+        <div class="top-overlay-controls">
+          <div id="modeBadge" class="mode-badge">Idle</div>
+          <div id="zoomControls" class="zoom-controls" hidden>
+            <button id="zoomOutBtn" class="zoom-btn" type="button" aria-label="Zoom out">-</button>
+            <button id="zoomInBtn" class="zoom-btn" type="button" aria-label="Zoom in">+</button>
+          </div>
+        </div>
         <canvas id="measureCanvas" aria-label="Image measurement canvas"></canvas>
         <div class="hint-bar" id="hintBar">
           Upload an image to begin.
