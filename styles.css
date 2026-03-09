@@ -247,6 +247,15 @@ input[type="file"] {
   transform: translateY(1px);
 }
 
+.zoom-percent {
+  min-width: 48px;
+  text-align: center;
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.8rem;
+  color: #2d1b57;
+  font-weight: 600;
+}
+
 .hint-bar {
   position: absolute;
   bottom: 12px;
@@ -258,6 +267,14 @@ input[type="file"] {
   border-radius: 12px;
   padding: 10px;
   font-size: 0.87rem;
+}
+
+.mobile-scroll-wrap {
+  display: none;
+}
+
+.mobile-scroll-wrap[hidden] {
+  display: none !important;
 }
 
 @media (max-width: 900px) {
@@ -309,6 +326,31 @@ input[type="file"] {
     top: 10px;
     left: 10px;
     gap: 6px;
+  }
+
+  .mobile-scroll-wrap {
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 4;
+    display: block;
+    width: 34px;
+    height: 170px;
+    border-radius: 999px;
+    border: 1px solid #c6a8f2;
+    background: rgba(236, 220, 255, 0.95);
+  }
+
+  .mobile-scroll-range {
+    position: absolute;
+    left: -55px;
+    top: 72px;
+    width: 140px;
+    height: 24px;
+    margin: 0;
+    transform: rotate(-90deg);
+    accent-color: #7f59d8;
   }
 
   .mode-badge {

@@ -6,12 +6,16 @@ const startCalibrationBtn = document.getElementById("startCalibration");
 const startMeasureBtn = document.getElementById("startMeasure");
 const clearPointsBtn = document.getElementById("clearPoints");
 const twoPointModeInput = document.getElementById("twoPointMode");
+const areaModeInput = document.getElementById("areaMode");
 const calibrationStatus = document.getElementById("calibrationStatus");
 const measureStatus = document.getElementById("measureStatus");
 const modeBadge = document.getElementById("modeBadge");
 const zoomControls = document.getElementById("zoomControls");
 const zoomOutBtn = document.getElementById("zoomOutBtn");
 const zoomInBtn = document.getElementById("zoomInBtn");
+const zoomPercent = document.getElementById("zoomPercent");
+const mobileScrollWrap = document.getElementById("mobileScrollWrap");
+const mobileScrollRange = document.getElementById("mobileScrollRange");
 const hintBar = document.getElementById("hintBar");
 const resultsList = document.getElementById("resultsList");
 
@@ -34,6 +38,7 @@ const state = {
   zoom: 1,
   panX: 0,
   panY: 0,
+  maxPanY: 0,
 };
 
 const MIN_ZOOM = 0.2;
@@ -59,7 +64,30 @@ function setupCanvasSize() {
 
 function updateImageDependentUi() {
   const hasImage = Boolean(state.image);
+  const showMobileScroll = hasImage && state.zoom > 1 && state.maxPanY > 0;
   zoomControls.hidden = !hasImage;
+  mobileScrollWrap.hidden = !showMobileScroll;
+}
+
+function syncMobileScrollUi() {
+  const canScroll = state.zoom > 1 && state.maxPanY > 0;
+  mobileScrollWrap.hidden = !state.image || !canScroll;
+  mobileScrollRange.disabled = !canScroll;
+
+  if (!canScroll) {
+    mobileScrollRange.min = "0";
+    mobileScrollRange.max = "0";
+    mobileScrollRange.value = "0";
+    return;
+  }
+
+  mobileScrollRange.min = String(-state.maxPanY);
+  mobileScrollRange.max = String(state.maxPanY);
+  mobileScrollRange.value = String(state.panY);
+}
+
+function syncZoomPercentUi() {
+  zoomPercent.textContent = `${Math.round(state.zoom * 100)}%`;
 }
 
 function updateImageRect() {
@@ -84,6 +112,7 @@ function updateImageRect() {
 
   const maxPanX = Math.max(0, (drawW - cw) / 2);
   const maxPanY = Math.max(0, (drawH - ch) / 2);
+  state.maxPanY = maxPanY;
   state.panX = Math.min(maxPanX, Math.max(-maxPanX, state.panX));
   state.panY = Math.min(maxPanY, Math.max(-maxPanY, state.panY));
 
@@ -157,8 +186,51 @@ function formatRealDistance(px) {
   return `${real.toFixed(2)} ${state.unit}`;
 }
 
+function formatRealArea(pxArea) {
+  if (!state.scaleRealPerPixel) {
+    return "n/a";
+  }
+  const realArea = pxArea * state.scaleRealPerPixel * state.scaleRealPerPixel;
+  return `${realArea.toFixed(2)} ${state.unit}^2`;
+}
+
 function isTwoPointModeEnabled() {
   return Boolean(twoPointModeInput?.checked);
+}
+
+function isAreaModeEnabled() {
+  return Boolean(areaModeInput?.checked);
+}
+
+function polygonArea(points) {
+  if (!Array.isArray(points) || points.length < 3) {
+    return 0;
+  }
+
+  let twiceSignedArea = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const current = points[i];
+    const next = points[(i + 1) % points.length];
+    twiceSignedArea += current.x * next.y - next.x * current.y;
+  }
+
+  return Math.abs(twiceSignedArea) / 2;
+}
+
+function polygonLabelPoint(points) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return { x: 0, y: 0 };
+  }
+
+  const total = points.reduce(
+    (acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }),
+    { x: 0, y: 0 }
+  );
+
+  return {
+    x: total.x / points.length,
+    y: total.y / points.length,
+  };
 }
 
 function drawPoint(point, fill) {
@@ -258,7 +330,14 @@ function refreshMeasureResults() {
   resultsList.innerHTML = "";
   let segmentIndex = 0;
 
-  if (isTwoPointModeEnabled()) {
+  if (isAreaModeEnabled()) {
+    if (state.measurePoints.length >= 3) {
+      const li = document.createElement("li");
+      li.textContent = `#1: Area ${formatRealArea(polygonArea(state.measurePoints))}`;
+      resultsList.prepend(li);
+      segmentIndex = 1;
+    }
+  } else if (isTwoPointModeEnabled()) {
     for (let i = 1; i < state.measurePoints.length; i += 2) {
       const a = state.measurePoints[i - 1];
       const b = state.measurePoints[i];
@@ -334,6 +413,7 @@ function redraw() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
 
   if (!state.image) {
+    syncMobileScrollUi();
     return;
   }
 
@@ -363,6 +443,10 @@ function redraw() {
 
   for (let i = 0; i < state.measurePoints.length; i += 1) {
     drawPoint(state.measurePoints[i], "#22d8ff");
+    if (isAreaModeEnabled()) {
+      continue;
+    }
+
     if (!isTwoPointModeEnabled() && i > 0) {
       const a = state.measurePoints[i - 1];
       const b = state.measurePoints[i];
@@ -375,7 +459,20 @@ function redraw() {
     }
   }
 
-  if (isTwoPointModeEnabled()) {
+  if (isAreaModeEnabled()) {
+    for (let i = 1; i < state.measurePoints.length; i += 1) {
+      drawLine(state.measurePoints[i - 1], state.measurePoints[i], "#22d8ff");
+    }
+
+    if (state.measurePoints.length >= 3) {
+      drawLine(state.measurePoints[state.measurePoints.length - 1], state.measurePoints[0], "#22d8ff");
+      drawLabel(
+        polygonLabelPoint(state.measurePoints),
+        `Area: ${formatRealArea(polygonArea(state.measurePoints))}`,
+        "#d8f8ff"
+      );
+    }
+  } else if (isTwoPointModeEnabled()) {
     for (let i = 1; i < state.measurePoints.length; i += 2) {
       const a = state.measurePoints[i - 1];
       const b = state.measurePoints[i];
@@ -389,7 +486,9 @@ function redraw() {
   }
 
   if (state.mode === "measure" && pointerPoint && state.measurePoints.length > 0) {
-    const hasAnchor = !isTwoPointModeEnabled() || state.measurePoints.length % 2 === 1;
+    const hasAnchor = isAreaModeEnabled()
+      || !isTwoPointModeEnabled()
+      || state.measurePoints.length % 2 === 1;
     if (hasAnchor) {
       const lastPoint = state.measurePoints[state.measurePoints.length - 1];
       drawLine(lastPoint, pointerPoint, "rgba(70, 197, 220, 0.75)");
@@ -405,6 +504,8 @@ function redraw() {
   if (isHoveringImage && !hasValidKnownLength() && !state.scaleRealPerPixel && state.mode !== "measure") {
     drawBlockingOverlay("Set a known length before calibrating");
   }
+
+  syncMobileScrollUi();
 }
 
 function pushResult(text) {
@@ -455,7 +556,10 @@ function startMeasuring() {
   state.draggingPointerId = null;
   refreshMeasureResults();
   setMode("measure");
-  if (isTwoPointModeEnabled()) {
+  if (isAreaModeEnabled()) {
+    measureStatus.textContent = "Area mode active. Click points around the shape.";
+    setHint("Click 3 or more points to outline a shape and measure area.");
+  } else if (isTwoPointModeEnabled()) {
     measureStatus.textContent = "2-point mode active. Click 2 points per measurement.";
     setHint("Click first point, then second point to complete one measurement.");
   } else {
@@ -483,6 +587,7 @@ function applyZoom(delta) {
   }
   const nextZoom = Number((state.zoom + delta).toFixed(2));
   state.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
+  syncZoomPercentUi();
   redraw();
 }
 
@@ -507,8 +612,10 @@ function loadImageFromFile(file, sourceLabel = "Uploaded") {
     state.zoom = 1;
     state.panX = 0;
     state.panY = 0;
+    state.maxPanY = 0;
     setMode("idle");
     updateImageDependentUi();
+    syncZoomPercentUi();
 
     const fileName = file.name || "clipboard-image";
     imageInfo.textContent = `${sourceLabel}: ${fileName} (${image.width} x ${image.height})`;
@@ -563,6 +670,23 @@ startMeasureBtn.addEventListener("click", startMeasuring);
 clearPointsBtn.addEventListener("click", clearPoints);
 zoomOutBtn.addEventListener("click", () => applyZoom(-ZOOM_STEP));
 zoomInBtn.addEventListener("click", () => applyZoom(ZOOM_STEP));
+mobileScrollRange.addEventListener("input", () => {
+  if (!state.image) {
+    return;
+  }
+
+  if (state.zoom <= 1 || state.maxPanY <= 0) {
+    return;
+  }
+
+  const nextPanY = Number(mobileScrollRange.value);
+  if (!Number.isFinite(nextPanY)) {
+    return;
+  }
+
+  state.panY = Math.min(state.maxPanY, Math.max(-state.maxPanY, nextPanY));
+  redraw();
+});
 
 canvas.addEventListener("pointerdown", (evt) => {
   canvas.setPointerCapture(evt.pointerId);
@@ -635,7 +759,13 @@ canvas.addEventListener("pointerdown", (evt) => {
 
     state.measurePoints.push(ipt);
     const pointsCount = state.measurePoints.length;
-    if (isTwoPointModeEnabled()) {
+    if (isAreaModeEnabled()) {
+      if (pointsCount < 3) {
+        measureStatus.textContent = `Point ${pointsCount} set. Add at least ${3 - pointsCount} more point(s) for area.`;
+      } else {
+        measureStatus.textContent = `Area: ${formatRealArea(polygonArea(state.measurePoints))}`;
+      }
+    } else if (isTwoPointModeEnabled()) {
       if (pointsCount % 2 === 1) {
         measureStatus.textContent = `Point ${pointsCount} set. Pick the second point.`;
       } else {
@@ -692,7 +822,9 @@ canvas.addEventListener("pointermove", (evt) => {
 canvas.addEventListener("pointerup", (evt) => {
   if (evt.pointerId === state.draggingPointerId) {
     if (state.mode === "measure") {
-      if (isTwoPointModeEnabled()) {
+      if (isAreaModeEnabled()) {
+        setHint("Add points around the shape. Drag points to fine-tune area.");
+      } else if (isTwoPointModeEnabled()) {
         setHint("Click first point, then second point to complete one measurement.");
       } else {
         setHint("Click first point, then keep clicking to measure segment by segment.");
@@ -764,9 +896,19 @@ knownUnitInput.addEventListener("change", () => {
 });
 
 twoPointModeInput.addEventListener("change", () => {
+  if (isTwoPointModeEnabled() && isAreaModeEnabled()) {
+    areaModeInput.checked = false;
+  }
+
+  state.measurePoints = [];
+  state.draggingMeasureIndex = null;
+  state.draggingPointerId = null;
   refreshMeasureResults();
   if (state.mode === "measure") {
-    if (isTwoPointModeEnabled()) {
+    if (isAreaModeEnabled()) {
+      measureStatus.textContent = "Area mode active. Click points around the shape.";
+      setHint("Click 3 or more points to outline a shape and measure area.");
+    } else if (isTwoPointModeEnabled()) {
       measureStatus.textContent = "2-point mode active. Click 2 points per measurement.";
       setHint("Click first point, then second point to complete one measurement.");
     } else {
@@ -777,6 +919,33 @@ twoPointModeInput.addEventListener("change", () => {
   redraw();
 });
 
+areaModeInput.addEventListener("change", () => {
+  if (isAreaModeEnabled() && isTwoPointModeEnabled()) {
+    twoPointModeInput.checked = false;
+  }
+
+  state.measurePoints = [];
+  state.draggingMeasureIndex = null;
+  state.draggingPointerId = null;
+  refreshMeasureResults();
+
+  if (state.mode === "measure") {
+    if (isAreaModeEnabled()) {
+      measureStatus.textContent = "Area mode active. Click points around the shape.";
+      setHint("Click 3 or more points to outline a shape and measure area.");
+    } else if (isTwoPointModeEnabled()) {
+      measureStatus.textContent = "2-point mode active. Click 2 points per measurement.";
+      setHint("Click first point, then second point to complete one measurement.");
+    } else {
+      measureStatus.textContent = "Chain mode active. Each new point continues from the last one.";
+      setHint("Click first point, then keep clicking to measure segment by segment.");
+    }
+  }
+
+  redraw();
+});
+
 window.addEventListener("resize", redraw);
 updateImageDependentUi();
+syncZoomPercentUi();
 redraw();

@@ -56,6 +56,10 @@
             <input id="twoPointMode" type="checkbox" checked />
             <span>Use 2-point measurements only</span>
           </label>
+          <label class="check-row" for="areaMode">
+            <input id="areaMode" type="checkbox" />
+            <span>Measure area (cm^2, in^2, etc.)</span>
+          </label>
           <div class="button-row">
             <button id="startMeasure" class="btn" disabled>Start measuring</button>
             <button id="clearPoints" class="btn ghost" disabled>Clear points</button>
@@ -74,8 +78,21 @@
           <div id="modeBadge" class="mode-badge">Idle</div>
           <div id="zoomControls" class="zoom-controls" hidden>
             <button id="zoomOutBtn" class="zoom-btn" type="button" aria-label="Zoom out">-</button>
+            <div id="zoomPercent" class="zoom-percent" aria-live="polite">100%</div>
             <button id="zoomInBtn" class="zoom-btn" type="button" aria-label="Zoom in">+</button>
           </div>
+        </div>
+        <div id="mobileScrollWrap" class="mobile-scroll-wrap" hidden>
+          <input
+            id="mobileScrollRange"
+            class="mobile-scroll-range"
+            type="range"
+            min="0"
+            max="0"
+            step="1"
+            value="0"
+            aria-label="Image scroll slider"
+          />
         </div>
         <canvas id="measureCanvas" aria-label="Image measurement canvas"></canvas>
         <div class="hint-bar" id="hintBar">
