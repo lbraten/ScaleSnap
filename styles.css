@@ -1,0 +1,261 @@
+:root {
+  --bg: #f2f6f5;
+  --ink: #142422;
+  --panel: #ffffff;
+  --line: #d5e3df;
+  --accent: #0c8b72;
+  --accent-soft: #d7f2eb;
+  --warn: #e66a2c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 20% 10%, #e2f3ef 0%, transparent 35%),
+    radial-gradient(circle at 80% 5%, #fde8db 0%, transparent 30%),
+    var(--bg);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) 1fr;
+  gap: 14px;
+  min-height: 100vh;
+  padding: 14px;
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.brand {
+  background: linear-gradient(130deg, #0c8b72, #0f6f8e);
+  color: #fff;
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.brand p {
+  margin: 8px 0 0;
+  font-size: 0.95rem;
+  opacity: 0.95;
+}
+
+.panel-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.panel-card h2 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.row {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+input[type="number"],
+input[type="text"] {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 0.95rem;
+  font-family: "IBM Plex Mono", Consolas, monospace;
+}
+
+input[type="file"] {
+  display: none;
+}
+
+.file-input-wrap {
+  display: inline-flex;
+  cursor: pointer;
+  border: 1px dashed #7da79d;
+  background: var(--accent-soft);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 500;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.btn:hover:enabled {
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  border-color: #0e7f69;
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn.ghost {
+  border-color: #ccdbd7;
+  background: #f8fbfa;
+}
+
+.button-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.muted {
+  margin-top: 8px;
+  color: #49635d;
+  font-size: 0.85rem;
+}
+
+.history-card {
+  flex: 1;
+  min-height: 180px;
+}
+
+#resultsList {
+  margin: 0;
+  padding-left: 16px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.canvas-panel {
+  position: relative;
+  background: #0e1e1b;
+  border-radius: 18px;
+  border: 1px solid #29423d;
+  overflow: hidden;
+  min-height: calc(100vh - 28px);
+}
+
+#measureCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.mode-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  color: #0f2b25;
+  background: #d3eee7;
+  border: 1px solid #98c5b8;
+}
+
+.hint-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #b8d2cb;
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 0.87rem;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+    min-height: 100dvh;
+    padding: 0;
+    gap: 0;
+  }
+
+  .canvas-panel {
+    min-height: 62dvh;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .control-panel {
+    order: 2;
+    background: #f7faf9;
+    border-top: 1px solid #cedbd7;
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 1fr;
+    animation: mobilePanelIn 240ms ease;
+  }
+
+  .brand {
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  .panel-card {
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  .button-row {
+    grid-template-columns: 1fr;
+  }
+
+  #resultsList {
+    max-height: 120px;
+  }
+}
+
+@keyframes mobilePanelIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

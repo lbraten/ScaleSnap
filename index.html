@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Pixel Measure Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="control-panel">
+        <div class="brand">
+          <h1>Pixel Measure Studio</h1>
+          <p>Calibrate once, then measure anywhere on your image.</p>
+        </div>
+
+        <section class="panel-card">
+          <h2>1) Upload Image</h2>
+          <label class="file-input-wrap" for="imageInput">
+            <span>Choose image</span>
+          </label>
+          <input id="imageInput" type="file" accept="image/*" />
+          <div id="imageInfo" class="muted">No image loaded</div>
+        </section>
+
+        <section class="panel-card">
+          <h2>2) Calibrate Scale</h2>
+          <div class="row">
+            <label for="knownLength">Known length</label>
+            <input id="knownLength" type="number" min="0" step="any" placeholder="e.g. 100" />
+          </div>
+          <div class="row">
+            <label for="knownUnit">Unit</label>
+            <input id="knownUnit" type="text" maxlength="12" placeholder="mm, cm, in" value="mm" />
+          </div>
+          <button id="startCalibration" class="btn primary">Pick 2 calibration points</button>
+          <div id="calibrationStatus" class="muted">Scale is not calibrated yet.</div>
+        </section>
+
+        <section class="panel-card">
+          <h2>3) Measure</h2>
+          <div class="button-row">
+            <button id="startMeasure" class="btn" disabled>Start measuring</button>
+            <button id="clearPoints" class="btn ghost" disabled>Clear points</button>
+          </div>
+          <div id="measureStatus" class="muted">Calibration required before measuring.</div>
+        </section>
+
+        <section class="panel-card history-card">
+          <h2>Results</h2>
+          <ul id="resultsList"></ul>
+        </section>
+      </aside>
+
+      <main class="canvas-panel">
+        <div id="modeBadge" class="mode-badge">Idle</div>
+        <canvas id="measureCanvas" aria-label="Image measurement canvas"></canvas>
+        <div class="hint-bar" id="hintBar">
+          Upload an image to begin.
+        </div>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
