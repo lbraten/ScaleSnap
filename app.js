@@ -23,14 +23,19 @@ const state = {
   mode: "idle",
   calibrationPoints: [],
   measurePoints: [],
+  draggingCalibrationIndex: null,
+  draggingMeasureIndex: null,
+  draggingPointerId: null,
   pointerCanvas: null,
   scaleRealPerPixel: null,
   unit: "cm",
   sequence: 0,
   zoom: 1,
+  panX: 0,
+  panY: 0,
 };
 
-const MIN_ZOOM = 1;
+const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.2;
 
@@ -70,8 +75,19 @@ function updateImageRect() {
   const scale = Math.min(cw / iw, ch / ih);
   const drawW = iw * scale * state.zoom;
   const drawH = ih * scale * state.zoom;
-  const x = (cw - drawW) / 2;
-  const y = (ch - drawH) / 2;
+
+  if (state.zoom <= 1) {
+    state.panX = 0;
+    state.panY = 0;
+  }
+
+  const maxPanX = Math.max(0, (drawW - cw) / 2);
+  const maxPanY = Math.max(0, (drawH - ch) / 2);
+  state.panX = Math.min(maxPanX, Math.max(-maxPanX, state.panX));
+  state.panY = Math.min(maxPanY, Math.max(-maxPanY, state.panY));
+
+  const x = (cw - drawW) / 2 + state.panX;
+  const y = (ch - drawH) / 2 + state.panY;
   state.imageRect = { x, y, w: drawW, h: drawH };
 }
 
@@ -86,6 +102,22 @@ function canvasPointToImagePoint(canvasX, canvasY) {
 
   const nx = (canvasX - x) / w;
   const ny = (canvasY - y) / h;
+  return {
+    x: nx * state.image.width,
+    y: ny * state.image.height,
+  };
+}
+
+function canvasPointToImagePointClamped(canvasX, canvasY) {
+  if (!state.imageRect || !state.image) {
+    return null;
+  }
+
+  const { x, y, w, h } = state.imageRect;
+  const clampedX = Math.min(x + w, Math.max(x, canvasX));
+  const clampedY = Math.min(y + h, Math.max(y, canvasY));
+  const nx = (clampedX - x) / w;
+  const ny = (clampedY - y) / h;
   return {
     x: nx * state.image.width,
     y: ny * state.image.height,
@@ -170,6 +202,89 @@ function drawBlockingOverlay(text) {
   const centerX = x + w / 2 - textWidth / 2;
   const centerY = y + h / 2;
   ctx.fillText(text, centerX, centerY);
+}
+
+function findNearestMeasurePointIndex(canvasPoint, radius = 12) {
+  if (!state.imageRect || state.measurePoints.length === 0) {
+    return -1;
+  }
+
+  let nearestIndex = -1;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < state.measurePoints.length; i += 1) {
+    const pointCanvas = imagePointToCanvasPoint(state.measurePoints[i]);
+    const d = Math.hypot(pointCanvas.x - canvasPoint.x, pointCanvas.y - canvasPoint.y);
+    if (d <= radius && d < nearestDistance) {
+      nearestDistance = d;
+      nearestIndex = i;
+    }
+  }
+
+  return nearestIndex;
+}
+
+function findNearestCalibrationPointIndex(canvasPoint, radius = 12) {
+  if (!state.imageRect || state.calibrationPoints.length === 0) {
+    return -1;
+  }
+
+  let nearestIndex = -1;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < state.calibrationPoints.length; i += 1) {
+    const pointCanvas = imagePointToCanvasPoint(state.calibrationPoints[i]);
+    const d = Math.hypot(pointCanvas.x - canvasPoint.x, pointCanvas.y - canvasPoint.y);
+    if (d <= radius && d < nearestDistance) {
+      nearestDistance = d;
+      nearestIndex = i;
+    }
+  }
+
+  return nearestIndex;
+}
+
+function refreshMeasureResults() {
+  resultsList.innerHTML = "";
+  for (let i = 1; i < state.measurePoints.length; i += 1) {
+    const a = state.measurePoints[i - 1];
+    const b = state.measurePoints[i];
+    const px = distance(a, b);
+    const li = document.createElement("li");
+    li.textContent = `#${i}: ${formatRealDistance(px)}`;
+    resultsList.prepend(li);
+  }
+  state.sequence = Math.max(0, state.measurePoints.length - 1);
+}
+
+function recalculateCalibrationFromPoints() {
+  if (state.calibrationPoints.length < 2) {
+    return;
+  }
+
+  const knownLength = Number(knownLengthInput.value);
+  if (!Number.isFinite(knownLength) || knownLength <= 0) {
+    calibrationStatus.textContent = "Enter a valid known length first.";
+    return;
+  }
+
+  const a = state.calibrationPoints[0];
+  const b = state.calibrationPoints[1];
+  const px = distance(a, b);
+  if (px <= 0) {
+    calibrationStatus.textContent = "Calibration points are too close.";
+    return;
+  }
+
+  state.unit = knownUnitInput.value.trim() || state.unit;
+  state.scaleRealPerPixel = knownLength / px;
+  calibrationStatus.textContent = `Calibrated: 1 px = ${state.scaleRealPerPixel.toFixed(6)} ${state.unit}`;
+}
+
+function clearActiveDrag() {
+  state.draggingCalibrationIndex = null;
+  state.draggingMeasureIndex = null;
+  state.draggingPointerId = null;
 }
 
 function redraw() {
@@ -307,6 +422,10 @@ function startMeasuring() {
     return;
   }
   state.measurePoints = [];
+  state.draggingCalibrationIndex = null;
+  state.draggingMeasureIndex = null;
+  state.draggingPointerId = null;
+  refreshMeasureResults();
   setMode("measure");
   measureStatus.textContent = "Measure mode active. Click points to create segment distances.";
   setHint("Click first point, then keep clicking to measure segment by segment.");
@@ -315,7 +434,11 @@ function startMeasuring() {
 
 function clearPoints() {
   state.measurePoints = [];
+  state.draggingCalibrationIndex = null;
+  state.draggingMeasureIndex = null;
+  state.draggingPointerId = null;
   state.pointerCanvas = null;
+  refreshMeasureResults();
   measureStatus.textContent = "Measurement points cleared.";
   setHint("Click Start measuring to create new segments.");
   redraw();
@@ -343,9 +466,14 @@ function loadImageFromFile(file, sourceLabel = "Uploaded") {
     state.image = image;
     state.calibrationPoints = [];
     state.measurePoints = [];
+    state.draggingCalibrationIndex = null;
+    state.draggingMeasureIndex = null;
+    state.draggingPointerId = null;
     state.pointerCanvas = null;
     state.scaleRealPerPixel = null;
     state.zoom = 1;
+    state.panX = 0;
+    state.panY = 0;
     setMode("idle");
     updateImageDependentUi();
 
@@ -353,6 +481,7 @@ function loadImageFromFile(file, sourceLabel = "Uploaded") {
     imageInfo.textContent = `${sourceLabel}: ${fileName} (${image.width} x ${image.height})`;
     calibrationStatus.textContent = "Set known length and pick 2 calibration points.";
     measureStatus.textContent = "Calibration required before measuring.";
+    refreshMeasureResults();
     startMeasureBtn.disabled = true;
     clearPointsBtn.disabled = true;
     setHint("Image loaded. Enter known length and start calibration.");
@@ -411,6 +540,18 @@ canvas.addEventListener("pointerdown", (evt) => {
     return;
   }
 
+  if (state.mode !== "measure" && state.calibrationPoints.length > 0) {
+    const hitCalibrationIndex = findNearestCalibrationPointIndex(cpt);
+    if (hitCalibrationIndex !== -1) {
+      state.draggingCalibrationIndex = hitCalibrationIndex;
+      state.draggingPointerId = evt.pointerId;
+      calibrationStatus.textContent = `Dragging calibration point #${hitCalibrationIndex + 1}.`;
+      setHint("Drag to adjust calibration point, then release.");
+      redraw();
+      return;
+    }
+  }
+
   if (state.mode === "calibration") {
     state.calibrationPoints.push(ipt);
     if (state.calibrationPoints.length === 1) {
@@ -424,25 +565,78 @@ canvas.addEventListener("pointerdown", (evt) => {
   }
 
   if (state.mode === "measure") {
+    const hitIndex = findNearestMeasurePointIndex(cpt);
+    if (hitIndex !== -1) {
+      state.draggingMeasureIndex = hitIndex;
+      state.draggingPointerId = evt.pointerId;
+      measureStatus.textContent = `Dragging point #${hitIndex + 1}.`;
+      setHint("Drag to adjust point position, then release.");
+      redraw();
+      return;
+    }
+
     state.measurePoints.push(ipt);
-    const len = state.measurePoints.length;
-    if (len > 1) {
-      const a = state.measurePoints[len - 2];
-      const b = state.measurePoints[len - 1];
+    const pointsCount = state.measurePoints.length;
+    if (pointsCount > 1) {
+      const a = state.measurePoints[pointsCount - 2];
+      const b = state.measurePoints[pointsCount - 1];
       const px = distance(a, b);
-      const text = `#${++state.sequence}: ${formatRealDistance(px)}`;
-      pushResult(text);
       measureStatus.textContent = `Last segment: ${formatRealDistance(px)}`;
     } else {
       measureStatus.textContent = "First point set. Choose next point to get distance.";
     }
+    refreshMeasureResults();
     redraw();
   }
 });
 
 canvas.addEventListener("pointermove", (evt) => {
   state.pointerCanvas = getCanvasCoordinates(evt);
+
+  if (
+    state.draggingCalibrationIndex !== null
+    && evt.pointerId === state.draggingPointerId
+    && state.mode !== "measure"
+  ) {
+    const dragPoint = canvasPointToImagePointClamped(state.pointerCanvas.x, state.pointerCanvas.y);
+    if (dragPoint) {
+      state.calibrationPoints[state.draggingCalibrationIndex] = dragPoint;
+      recalculateCalibrationFromPoints();
+      refreshMeasureResults();
+    }
+  }
+
+  if (state.mode === "measure" && state.draggingMeasureIndex !== null && evt.pointerId === state.draggingPointerId) {
+    const dragPoint = canvasPointToImagePointClamped(state.pointerCanvas.x, state.pointerCanvas.y);
+    if (dragPoint) {
+      state.measurePoints[state.draggingMeasureIndex] = dragPoint;
+      refreshMeasureResults();
+      measureStatus.textContent = `Adjusted point #${state.draggingMeasureIndex + 1}.`;
+    }
+  }
+
   if (state.image) {
+    redraw();
+  }
+});
+
+canvas.addEventListener("pointerup", (evt) => {
+  if (evt.pointerId === state.draggingPointerId) {
+    if (state.mode === "measure") {
+      setHint("Click first point, then keep clicking to measure segment by segment.");
+    } else if (state.calibrationPoints.length >= 2) {
+      setHint("Calibration adjusted. Start measuring or continue refining points.");
+    }
+    clearActiveDrag();
+    canvas.releasePointerCapture(evt.pointerId);
+    redraw();
+  }
+});
+
+canvas.addEventListener("pointercancel", (evt) => {
+  if (evt.pointerId === state.draggingPointerId) {
+    clearActiveDrag();
+    canvas.releasePointerCapture(evt.pointerId);
     redraw();
   }
 });
@@ -451,6 +645,21 @@ canvas.addEventListener("pointerleave", () => {
   state.pointerCanvas = null;
   redraw();
 });
+
+canvas.addEventListener(
+  "wheel",
+  (evt) => {
+    if (!state.image || state.zoom <= 1) {
+      return;
+    }
+
+    evt.preventDefault();
+    state.panX -= evt.deltaX;
+    state.panY -= evt.deltaY;
+    redraw();
+  },
+  { passive: false }
+);
 
 knownLengthInput.addEventListener("input", () => {
   if (state.image) {
