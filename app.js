@@ -144,6 +144,11 @@ function hasValidKnownLength() {
   return Number.isFinite(knownLength) && knownLength > 0;
 }
 
+function hasValidUnit() {
+  const unit = knownUnitInput.value.trim();
+  return Boolean(unit);
+}
+
 function formatRealDistance(px) {
   if (!state.scaleRealPerPixel) {
     return "n/a";
@@ -308,6 +313,21 @@ function clearActiveDrag() {
   state.draggingPointerId = null;
 }
 
+function resetCalibration() {
+  state.calibrationPoints = [];
+  state.scaleRealPerPixel = null;
+  state.measurePoints = [];
+  clearActiveDrag();
+  refreshMeasureResults();
+  setMode("idle");
+  startMeasureBtn.disabled = true;
+  clearPointsBtn.disabled = true;
+  calibrationStatus.textContent = "Calibration reset. Enter known length, then click 2 points on the image.";
+  measureStatus.textContent = "Calibration required before measuring.";
+  setHint("Click two points on the image to calibrate.");
+  redraw();
+}
+
 function redraw() {
   setupCanvasSize();
 
@@ -403,35 +423,6 @@ function getCanvasCoordinates(evt) {
   };
 }
 
-function beginCalibration() {
-  const knownLength = Number(knownLengthInput.value);
-  const unit = knownUnitInput.value.trim();
-
-  if (!state.image) {
-    calibrationStatus.textContent = "Upload an image first.";
-    return;
-  }
-  if (!Number.isFinite(knownLength) || knownLength <= 0) {
-    calibrationStatus.textContent = "Enter a valid known length first.";
-    return;
-  }
-  if (!unit) {
-    calibrationStatus.textContent = "Enter a unit like mm or cm.";
-    return;
-  }
-
-  state.calibrationPoints = [];
-  state.scaleRealPerPixel = null;
-  state.unit = unit;
-  setMode("calibration");
-  setHint("Tap or click the first point for your known-length reference.");
-  calibrationStatus.textContent = `Calibration active. Known length: ${knownLength} ${unit}`;
-  measureStatus.textContent = "Finish calibration to enable measuring.";
-  startMeasureBtn.disabled = true;
-  clearPointsBtn.disabled = true;
-  redraw();
-}
-
 function finishCalibration() {
   const knownLength = Number(knownLengthInput.value);
   const a = state.calibrationPoints[0];
@@ -521,12 +512,12 @@ function loadImageFromFile(file, sourceLabel = "Uploaded") {
 
     const fileName = file.name || "clipboard-image";
     imageInfo.textContent = `${sourceLabel}: ${fileName} (${image.width} x ${image.height})`;
-    calibrationStatus.textContent = "Set known length and pick 2 calibration points.";
+    calibrationStatus.textContent = "Enter known length, then click 2 calibration points.";
     measureStatus.textContent = "Calibration required before measuring.";
     refreshMeasureResults();
     startMeasureBtn.disabled = true;
     clearPointsBtn.disabled = true;
-    setHint("Image loaded. Enter known length and start calibration.");
+    setHint("Image loaded. Enter known length, then click two points to calibrate.");
     redraw();
     URL.revokeObjectURL(objectUrl);
   };
@@ -567,7 +558,7 @@ document.addEventListener("paste", (evt) => {
   loadImageFromFile(file, "Pasted");
 });
 
-startCalibrationBtn.addEventListener("click", beginCalibration);
+startCalibrationBtn.addEventListener("click", resetCalibration);
 startMeasureBtn.addEventListener("click", startMeasuring);
 clearPointsBtn.addEventListener("click", clearPoints);
 zoomOutBtn.addEventListener("click", () => applyZoom(-ZOOM_STEP));
@@ -594,9 +585,34 @@ canvas.addEventListener("pointerdown", (evt) => {
     }
   }
 
-  if (state.mode === "calibration") {
+  if (state.mode !== "measure") {
+    if (!hasValidKnownLength()) {
+      calibrationStatus.textContent = "Enter a valid known length first.";
+      setHint("Fill in known length before setting calibration points.");
+      redraw();
+      return;
+    }
+
+    if (!hasValidUnit()) {
+      calibrationStatus.textContent = "Select a valid unit first.";
+      redraw();
+      return;
+    }
+
+    state.unit = knownUnitInput.value.trim();
+
+    if (state.calibrationPoints.length >= 2) {
+      state.calibrationPoints = [];
+      state.scaleRealPerPixel = null;
+      startMeasureBtn.disabled = true;
+      clearPointsBtn.disabled = true;
+      measureStatus.textContent = "Finish calibration to enable measuring.";
+    }
+
+    setMode("calibration");
     state.calibrationPoints.push(ipt);
     if (state.calibrationPoints.length === 1) {
+      calibrationStatus.textContent = `Calibration started. Known length: ${Number(knownLengthInput.value)} ${state.unit}`;
       setHint("Now tap or click the second calibration point.");
     }
     if (state.calibrationPoints.length === 2) {
@@ -719,9 +735,32 @@ canvas.addEventListener(
 );
 
 knownLengthInput.addEventListener("input", () => {
+  if (!hasValidKnownLength()) {
+    state.scaleRealPerPixel = null;
+    startMeasureBtn.disabled = true;
+    clearPointsBtn.disabled = true;
+    if (state.image) {
+      calibrationStatus.textContent = "Enter known length, then click 2 calibration points.";
+      measureStatus.textContent = "Calibration required before measuring.";
+    }
+  } else if (state.calibrationPoints.length >= 2) {
+    recalculateCalibrationFromPoints();
+    startMeasureBtn.disabled = false;
+    clearPointsBtn.disabled = false;
+  }
+
   if (state.image) {
     redraw();
   }
+});
+
+knownUnitInput.addEventListener("change", () => {
+  state.unit = knownUnitInput.value.trim() || state.unit;
+  if (state.calibrationPoints.length >= 2 && hasValidKnownLength()) {
+    recalculateCalibrationFromPoints();
+    refreshMeasureResults();
+  }
+  redraw();
 });
 
 twoPointModeInput.addEventListener("change", () => {
