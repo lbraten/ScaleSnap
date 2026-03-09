@@ -5,6 +5,7 @@ const knownUnitInput = document.getElementById("knownUnit");
 const startCalibrationBtn = document.getElementById("startCalibration");
 const startMeasureBtn = document.getElementById("startMeasure");
 const clearPointsBtn = document.getElementById("clearPoints");
+const twoPointModeInput = document.getElementById("twoPointMode");
 const calibrationStatus = document.getElementById("calibrationStatus");
 const measureStatus = document.getElementById("measureStatus");
 const modeBadge = document.getElementById("modeBadge");
@@ -151,6 +152,10 @@ function formatRealDistance(px) {
   return `${real.toFixed(2)} ${state.unit}`;
 }
 
+function isTwoPointModeEnabled() {
+  return Boolean(twoPointModeInput?.checked);
+}
+
 function drawPoint(point, fill) {
   const c = imagePointToCanvasPoint(point);
   ctx.beginPath();
@@ -246,15 +251,31 @@ function findNearestCalibrationPointIndex(canvasPoint, radius = 12) {
 
 function refreshMeasureResults() {
   resultsList.innerHTML = "";
-  for (let i = 1; i < state.measurePoints.length; i += 1) {
-    const a = state.measurePoints[i - 1];
-    const b = state.measurePoints[i];
-    const px = distance(a, b);
-    const li = document.createElement("li");
-    li.textContent = `#${i}: ${formatRealDistance(px)}`;
-    resultsList.prepend(li);
+  let segmentIndex = 0;
+
+  if (isTwoPointModeEnabled()) {
+    for (let i = 1; i < state.measurePoints.length; i += 2) {
+      const a = state.measurePoints[i - 1];
+      const b = state.measurePoints[i];
+      const px = distance(a, b);
+      segmentIndex += 1;
+      const li = document.createElement("li");
+      li.textContent = `#${segmentIndex}: ${formatRealDistance(px)}`;
+      resultsList.prepend(li);
+    }
+  } else {
+    for (let i = 1; i < state.measurePoints.length; i += 1) {
+      const a = state.measurePoints[i - 1];
+      const b = state.measurePoints[i];
+      const px = distance(a, b);
+      segmentIndex += 1;
+      const li = document.createElement("li");
+      li.textContent = `#${segmentIndex}: ${formatRealDistance(px)}`;
+      resultsList.prepend(li);
+    }
   }
-  state.sequence = Math.max(0, state.measurePoints.length - 1);
+
+  state.sequence = segmentIndex;
 }
 
 function recalculateCalibrationFromPoints() {
@@ -322,7 +343,20 @@ function redraw() {
 
   for (let i = 0; i < state.measurePoints.length; i += 1) {
     drawPoint(state.measurePoints[i], "#22d8ff");
-    if (i > 0) {
+    if (!isTwoPointModeEnabled() && i > 0) {
+      const a = state.measurePoints[i - 1];
+      const b = state.measurePoints[i];
+      drawLine(a, b, "#22d8ff");
+      drawLabel(
+        { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        formatRealDistance(distance(a, b)),
+        "#d8f8ff"
+      );
+    }
+  }
+
+  if (isTwoPointModeEnabled()) {
+    for (let i = 1; i < state.measurePoints.length; i += 2) {
       const a = state.measurePoints[i - 1];
       const b = state.measurePoints[i];
       drawLine(a, b, "#22d8ff");
@@ -335,14 +369,17 @@ function redraw() {
   }
 
   if (state.mode === "measure" && pointerPoint && state.measurePoints.length > 0) {
-    const lastPoint = state.measurePoints[state.measurePoints.length - 1];
-    drawLine(lastPoint, pointerPoint, "rgba(70, 197, 220, 0.75)");
-    drawPoint(pointerPoint, "rgba(34, 216, 255, 0.6)");
-    drawLabel(
-      { x: (lastPoint.x + pointerPoint.x) / 2, y: (lastPoint.y + pointerPoint.y) / 2 },
-      formatRealDistance(distance(lastPoint, pointerPoint)),
-      "#d8f8ff"
-    );
+    const hasAnchor = !isTwoPointModeEnabled() || state.measurePoints.length % 2 === 1;
+    if (hasAnchor) {
+      const lastPoint = state.measurePoints[state.measurePoints.length - 1];
+      drawLine(lastPoint, pointerPoint, "rgba(70, 197, 220, 0.75)");
+      drawPoint(pointerPoint, "rgba(34, 216, 255, 0.6)");
+      drawLabel(
+        { x: (lastPoint.x + pointerPoint.x) / 2, y: (lastPoint.y + pointerPoint.y) / 2 },
+        formatRealDistance(distance(lastPoint, pointerPoint)),
+        "#d8f8ff"
+      );
+    }
   }
 
   if (isHoveringImage && !hasValidKnownLength() && !state.scaleRealPerPixel && state.mode !== "measure") {
@@ -427,8 +464,13 @@ function startMeasuring() {
   state.draggingPointerId = null;
   refreshMeasureResults();
   setMode("measure");
-  measureStatus.textContent = "Measure mode active. Click points to create segment distances.";
-  setHint("Click first point, then keep clicking to measure segment by segment.");
+  if (isTwoPointModeEnabled()) {
+    measureStatus.textContent = "2-point mode active. Click 2 points per measurement.";
+    setHint("Click first point, then second point to complete one measurement.");
+  } else {
+    measureStatus.textContent = "Measure mode active. Click points to create segment distances.";
+    setHint("Click first point, then keep clicking to measure segment by segment.");
+  }
   redraw();
 }
 
@@ -577,13 +619,24 @@ canvas.addEventListener("pointerdown", (evt) => {
 
     state.measurePoints.push(ipt);
     const pointsCount = state.measurePoints.length;
-    if (pointsCount > 1) {
-      const a = state.measurePoints[pointsCount - 2];
-      const b = state.measurePoints[pointsCount - 1];
-      const px = distance(a, b);
-      measureStatus.textContent = `Last segment: ${formatRealDistance(px)}`;
+    if (isTwoPointModeEnabled()) {
+      if (pointsCount % 2 === 1) {
+        measureStatus.textContent = `Point ${pointsCount} set. Pick the second point.`;
+      } else {
+        const a = state.measurePoints[pointsCount - 2];
+        const b = state.measurePoints[pointsCount - 1];
+        const px = distance(a, b);
+        measureStatus.textContent = `Measurement #${pointsCount / 2}: ${formatRealDistance(px)}`;
+      }
     } else {
-      measureStatus.textContent = "First point set. Choose next point to get distance.";
+      if (pointsCount > 1) {
+        const a = state.measurePoints[pointsCount - 2];
+        const b = state.measurePoints[pointsCount - 1];
+        const px = distance(a, b);
+        measureStatus.textContent = `Last segment: ${formatRealDistance(px)}`;
+      } else {
+        measureStatus.textContent = "First point set. Choose next point to get distance.";
+      }
     }
     refreshMeasureResults();
     redraw();
@@ -623,7 +676,11 @@ canvas.addEventListener("pointermove", (evt) => {
 canvas.addEventListener("pointerup", (evt) => {
   if (evt.pointerId === state.draggingPointerId) {
     if (state.mode === "measure") {
-      setHint("Click first point, then keep clicking to measure segment by segment.");
+      if (isTwoPointModeEnabled()) {
+        setHint("Click first point, then second point to complete one measurement.");
+      } else {
+        setHint("Click first point, then keep clicking to measure segment by segment.");
+      }
     } else if (state.calibrationPoints.length >= 2) {
       setHint("Calibration adjusted. Start measuring or continue refining points.");
     }
@@ -665,6 +722,20 @@ knownLengthInput.addEventListener("input", () => {
   if (state.image) {
     redraw();
   }
+});
+
+twoPointModeInput.addEventListener("change", () => {
+  refreshMeasureResults();
+  if (state.mode === "measure") {
+    if (isTwoPointModeEnabled()) {
+      measureStatus.textContent = "2-point mode active. Click 2 points per measurement.";
+      setHint("Click first point, then second point to complete one measurement.");
+    } else {
+      measureStatus.textContent = "Chain mode active. Each new point continues from the last one.";
+      setHint("Click first point, then keep clicking to measure segment by segment.");
+    }
+  }
+  redraw();
 });
 
 window.addEventListener("resize", redraw);

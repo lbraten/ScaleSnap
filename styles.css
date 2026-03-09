@@ -146,6 +146,20 @@ input[type="file"] {
   grid-template-columns: 1fr 1fr;
 }
 
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+}
+
+.check-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #7f59d8;
+}
+
 .muted {
   margin-top: 8px;
   color: #5f5287;
