@@ -5,6 +5,7 @@ const knownUnitInput = document.getElementById("knownUnit");
 const startCalibrationBtn = document.getElementById("startCalibration");
 const startMeasureBtn = document.getElementById("startMeasure");
 const clearPointsBtn = document.getElementById("clearPoints");
+const finishAreaBtn = document.getElementById("finishArea");
 const twoPointModeInput = document.getElementById("twoPointMode");
 const areaModeInput = document.getElementById("areaMode");
 const calibrationStatus = document.getElementById("calibrationStatus");
@@ -18,6 +19,7 @@ const mobileScrollWrap = document.getElementById("mobileScrollWrap");
 const mobileScrollRange = document.getElementById("mobileScrollRange");
 const hintBar = document.getElementById("hintBar");
 const resultsList = document.getElementById("resultsList");
+const clearResultsBtn = document.getElementById("clearResults");
 
 const canvas = document.getElementById("measureCanvas");
 const ctx = canvas.getContext("2d");
@@ -28,6 +30,8 @@ const state = {
   mode: "idle",
   calibrationPoints: [],
   measurePoints: [],
+  savedAreas: [],
+  selectedSavedAreaIndex: null,
   draggingCalibrationIndex: null,
   draggingMeasureIndex: null,
   draggingPointerId: null,
@@ -168,6 +172,28 @@ function distance(a, b) {
   return Math.hypot(dx, dy);
 }
 
+function lineAngleDegrees(a, b) {
+  const radians = Math.atan2(b.y - a.y, b.x - a.x);
+  let degrees = (radians * 180) / Math.PI;
+  if (degrees < 0) {
+    degrees += 360;
+  }
+  return degrees;
+}
+
+function formatLineAngle(a, b) {
+  return `${lineAngleDegrees(a, b).toFixed(1)} deg`;
+}
+
+function isAxisAlignedAngle(a, b) {
+  const angle = lineAngleDegrees(a, b);
+  return Number.isInteger(angle) && angle % 90 === 0;
+}
+
+function angleAwareLabelColor(a, b, defaultColor) {
+  return isAxisAlignedAngle(a, b) ? "#9bff9f" : defaultColor;
+}
+
 function hasValidKnownLength() {
   const knownLength = Number(knownLengthInput.value);
   return Number.isFinite(knownLength) && knownLength > 0;
@@ -233,6 +259,29 @@ function polygonLabelPoint(points) {
   };
 }
 
+function clonePoints(points) {
+  return points.map((point) => ({ x: point.x, y: point.y }));
+}
+
+function getSelectedSavedArea() {
+  const { selectedSavedAreaIndex, savedAreas } = state;
+  if (selectedSavedAreaIndex === null) {
+    return null;
+  }
+
+  if (selectedSavedAreaIndex < 0 || selectedSavedAreaIndex >= savedAreas.length) {
+    return null;
+  }
+
+  return savedAreas[selectedSavedAreaIndex];
+}
+
+function updateFinishAreaButtonState() {
+  const canUseAreaButton = Boolean(state.scaleRealPerPixel) && isAreaModeEnabled();
+  finishAreaBtn.hidden = !canUseAreaButton;
+  finishAreaBtn.disabled = !(canUseAreaButton && state.mode === "measure" && state.measurePoints.length >= 3);
+}
+
 function drawPoint(point, fill) {
   const c = imagePointToCanvasPoint(point);
   ctx.beginPath();
@@ -253,6 +302,25 @@ function drawLine(a, b, color = "#33d2b3") {
   ctx.lineWidth = 2;
   ctx.strokeStyle = color;
   ctx.stroke();
+}
+
+function drawPolygonFill(points, fill = "rgba(34, 216, 255, 0.22)") {
+  if (!Array.isArray(points) || points.length < 3) {
+    return;
+  }
+
+  const first = imagePointToCanvasPoint(points[0]);
+  ctx.beginPath();
+  ctx.moveTo(first.x, first.y);
+
+  for (let i = 1; i < points.length; i += 1) {
+    const p = imagePointToCanvasPoint(points[i]);
+    ctx.lineTo(p.x, p.y);
+  }
+
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
 }
 
 function drawLabel(mid, text, color = "#ffffff") {
@@ -331,11 +399,24 @@ function refreshMeasureResults() {
   let segmentIndex = 0;
 
   if (isAreaModeEnabled()) {
+    for (let i = 0; i < state.savedAreas.length; i += 1) {
+      const savedArea = state.savedAreas[i];
+      const li = document.createElement("li");
+      li.textContent = `#${i + 1}: Area ${formatRealArea(polygonArea(savedArea.points))}`;
+      li.dataset.savedAreaIndex = String(i);
+      li.classList.add("result-item", "area-result");
+      if (state.selectedSavedAreaIndex === i) {
+        li.classList.add("active");
+      }
+      resultsList.prepend(li);
+      segmentIndex += 1;
+    }
+
     if (state.measurePoints.length >= 3) {
       const li = document.createElement("li");
-      li.textContent = `#1: Area ${formatRealArea(polygonArea(state.measurePoints))}`;
+      li.textContent = `Draft: Area ${formatRealArea(polygonArea(state.measurePoints))}`;
+      li.classList.add("result-item", "draft-result");
       resultsList.prepend(li);
-      segmentIndex = 1;
     }
   } else if (isTwoPointModeEnabled()) {
     for (let i = 1; i < state.measurePoints.length; i += 2) {
@@ -360,6 +441,7 @@ function refreshMeasureResults() {
   }
 
   state.sequence = segmentIndex;
+  updateFinishAreaButtonState();
 }
 
 function recalculateCalibrationFromPoints() {
@@ -396,6 +478,8 @@ function resetCalibration() {
   state.calibrationPoints = [];
   state.scaleRealPerPixel = null;
   state.measurePoints = [];
+  state.savedAreas = [];
+  state.selectedSavedAreaIndex = null;
   clearActiveDrag();
   refreshMeasureResults();
   setMode("idle");
@@ -414,6 +498,7 @@ function redraw() {
 
   if (!state.image) {
     syncMobileScrollUi();
+    updateFinishAreaButtonState();
     return;
   }
 
@@ -436,8 +521,19 @@ function redraw() {
     const b = state.calibrationPoints[1];
     drawLabel(
       { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-      `Calib: ${formatRealDistance(distance(a, b))}`,
-      "#ffd6c7"
+      `Calib: ${formatRealDistance(distance(a, b))} | ${formatLineAngle(a, b)}`,
+      angleAwareLabelColor(a, b, "#ffd6c7")
+    );
+  }
+
+  if (state.mode === "calibration" && state.calibrationPoints.length === 1 && pointerPoint) {
+    const a = state.calibrationPoints[0];
+    drawLine(a, pointerPoint, "rgba(255, 127, 74, 0.8)");
+    drawPoint(pointerPoint, "rgba(255, 127, 74, 0.5)");
+    drawLabel(
+      { x: (a.x + pointerPoint.x) / 2, y: (a.y + pointerPoint.y) / 2 },
+      `Preview: ${formatRealDistance(distance(a, pointerPoint))} | ${formatLineAngle(a, pointerPoint)}`,
+      angleAwareLabelColor(a, pointerPoint, "#ffd6c7")
     );
   }
 
@@ -453,13 +549,33 @@ function redraw() {
       drawLine(a, b, "#22d8ff");
       drawLabel(
         { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-        formatRealDistance(distance(a, b)),
-        "#d8f8ff"
+        `${formatRealDistance(distance(a, b))} | ${formatLineAngle(a, b)}`,
+        angleAwareLabelColor(a, b, "#d8f8ff")
       );
     }
   }
 
   if (isAreaModeEnabled()) {
+    const selectedSavedArea = getSelectedSavedArea();
+    if (selectedSavedArea?.points?.length >= 3) {
+      drawPolygonFill(selectedSavedArea.points, "rgba(255, 186, 112, 0.2)");
+      for (let i = 1; i < selectedSavedArea.points.length; i += 1) {
+        drawLine(selectedSavedArea.points[i - 1], selectedSavedArea.points[i], "#ffba70");
+      }
+      drawLine(
+        selectedSavedArea.points[selectedSavedArea.points.length - 1],
+        selectedSavedArea.points[0],
+        "#ffba70"
+      );
+      drawLabel(
+        polygonLabelPoint(selectedSavedArea.points),
+        `Saved: ${formatRealArea(polygonArea(selectedSavedArea.points))}`,
+        "#ffe1c0"
+      );
+    }
+
+    drawPolygonFill(state.measurePoints);
+
     for (let i = 1; i < state.measurePoints.length; i += 1) {
       drawLine(state.measurePoints[i - 1], state.measurePoints[i], "#22d8ff");
     }
@@ -479,8 +595,8 @@ function redraw() {
       drawLine(a, b, "#22d8ff");
       drawLabel(
         { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-        formatRealDistance(distance(a, b)),
-        "#d8f8ff"
+        `${formatRealDistance(distance(a, b))} | ${formatLineAngle(a, b)}`,
+        angleAwareLabelColor(a, b, "#d8f8ff")
       );
     }
   }
@@ -495,8 +611,8 @@ function redraw() {
       drawPoint(pointerPoint, "rgba(34, 216, 255, 0.6)");
       drawLabel(
         { x: (lastPoint.x + pointerPoint.x) / 2, y: (lastPoint.y + pointerPoint.y) / 2 },
-        formatRealDistance(distance(lastPoint, pointerPoint)),
-        "#d8f8ff"
+        `${formatRealDistance(distance(lastPoint, pointerPoint))} | ${formatLineAngle(lastPoint, pointerPoint)}`,
+        angleAwareLabelColor(lastPoint, pointerPoint, "#d8f8ff")
       );
     }
   }
@@ -506,6 +622,7 @@ function redraw() {
   }
 
   syncMobileScrollUi();
+  updateFinishAreaButtonState();
 }
 
 function pushResult(text) {
@@ -550,10 +667,14 @@ function startMeasuring() {
     measureStatus.textContent = "You must calibrate first.";
     return;
   }
-  state.measurePoints = [];
+  if (isAreaModeEnabled()) {
+    // Keep completed areas, only reset the in-progress draft polygon.
+    state.measurePoints = [];
+  }
   state.draggingCalibrationIndex = null;
   state.draggingMeasureIndex = null;
   state.draggingPointerId = null;
+  state.pointerCanvas = null;
   refreshMeasureResults();
   setMode("measure");
   if (isAreaModeEnabled()) {
@@ -591,6 +712,56 @@ function applyZoom(delta) {
   redraw();
 }
 
+function finishAreaMeasurement() {
+  if (!isAreaModeEnabled()) {
+    measureStatus.textContent = "Enable area mode first.";
+    return;
+  }
+
+  if (state.mode !== "measure") {
+    measureStatus.textContent = "Click Start measuring first.";
+    return;
+  }
+
+  if (state.measurePoints.length < 3) {
+    measureStatus.textContent = "Area needs at least 3 points.";
+    return;
+  }
+
+  state.savedAreas.push({
+    points: clonePoints(state.measurePoints),
+  });
+  const nextIndex = state.savedAreas.length;
+  state.selectedSavedAreaIndex = nextIndex - 1;
+  state.measurePoints = [];
+  state.draggingMeasureIndex = null;
+  state.draggingPointerId = null;
+  state.pointerCanvas = null;
+
+  refreshMeasureResults();
+  measureStatus.textContent = `Saved area #${nextIndex}. Click points to start another area.`;
+  setHint("Area saved. Click 3 or more points to measure another area.");
+  redraw();
+}
+
+function clearResults() {
+  const shouldClear = window.confirm("Clear all saved results and current draft points?");
+  if (!shouldClear) {
+    return;
+  }
+
+  state.measurePoints = [];
+  state.savedAreas = [];
+  state.selectedSavedAreaIndex = null;
+  state.draggingMeasureIndex = null;
+  state.draggingPointerId = null;
+  state.pointerCanvas = null;
+  refreshMeasureResults();
+  measureStatus.textContent = "Results cleared.";
+  setHint("Results cleared. Start measuring to add new results.");
+  redraw();
+}
+
 function loadImageFromFile(file, sourceLabel = "Uploaded") {
   if (!file || !file.type.startsWith("image/")) {
     imageInfo.textContent = "That clipboard item is not an image.";
@@ -604,6 +775,8 @@ function loadImageFromFile(file, sourceLabel = "Uploaded") {
     state.image = image;
     state.calibrationPoints = [];
     state.measurePoints = [];
+    state.savedAreas = [];
+    state.selectedSavedAreaIndex = null;
     state.draggingCalibrationIndex = null;
     state.draggingMeasureIndex = null;
     state.draggingPointerId = null;
@@ -668,6 +841,33 @@ document.addEventListener("paste", (evt) => {
 startCalibrationBtn.addEventListener("click", resetCalibration);
 startMeasureBtn.addEventListener("click", startMeasuring);
 clearPointsBtn.addEventListener("click", clearPoints);
+finishAreaBtn.addEventListener("click", finishAreaMeasurement);
+clearResultsBtn.addEventListener("click", clearResults);
+resultsList.addEventListener("click", (evt) => {
+  const target = evt.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const item = target.closest("li[data-saved-area-index]");
+  if (!item) {
+    return;
+  }
+
+  const index = Number(item.dataset.savedAreaIndex);
+  if (!Number.isInteger(index) || index < 0 || index >= state.savedAreas.length) {
+    return;
+  }
+
+  state.selectedSavedAreaIndex = index;
+  if (isAreaModeEnabled()) {
+    const areaNumber = index + 1;
+    measureStatus.textContent = `Showing saved area #${areaNumber}.`;
+    setHint("Saved area selected. Start a new draft to measure another shape.");
+  }
+  refreshMeasureResults();
+  redraw();
+});
 zoomOutBtn.addEventListener("click", () => applyZoom(-ZOOM_STEP));
 zoomInBtn.addEventListener("click", () => applyZoom(ZOOM_STEP));
 mobileScrollRange.addEventListener("input", () => {
@@ -901,6 +1101,8 @@ twoPointModeInput.addEventListener("change", () => {
   }
 
   state.measurePoints = [];
+  state.savedAreas = [];
+  state.selectedSavedAreaIndex = null;
   state.draggingMeasureIndex = null;
   state.draggingPointerId = null;
   refreshMeasureResults();
@@ -925,6 +1127,8 @@ areaModeInput.addEventListener("change", () => {
   }
 
   state.measurePoints = [];
+  state.savedAreas = [];
+  state.selectedSavedAreaIndex = null;
   state.draggingMeasureIndex = null;
   state.draggingPointerId = null;
   refreshMeasureResults();
